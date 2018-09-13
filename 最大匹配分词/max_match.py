@@ -2,7 +2,8 @@
 # -*- coding:utf-8 -*-
 
 def CreateTxt(data,txt):
-    with open(data,'r') as infile,open(txt,'w') as outfile:
+    #创建文本文件
+    with open(data,'r',encoding='utf-8') as infile,open(txt,'w',encoding='utf-8') as outfile:
         for line in infile:
             if len(line) > 1 :
                 outfile.write("%s" % line.split()[1])
@@ -10,7 +11,8 @@ def CreateTxt(data,txt):
                 outfile.write('\n')
 
 def CreateDict(data,dic):
-    with open(data,'r') as infile,open(dic,'w') as outfile:
+    #创建字典
+    with open(data,'r',encoding='utf-8') as infile,open(dic,'w',encoding='utf-8') as outfile:
         words = set()
         for line in infile:
             if len(line) > 1 :
@@ -23,7 +25,7 @@ def CreateDict(data,dic):
         return max_len , words  
 
 def MM(txt,output,dic):
-    with open(txt,'r') as txt,open(output,'w') as out,open(dic,'r') as diction:
+    with open(txt,'r',encoding='utf-8') as txt,open(output,'w',encoding='utf-8') as out,open(dic,'r',encoding='utf-8') as diction:
         words = set()
         max_len = 0
         for line in diction:
@@ -36,14 +38,14 @@ def MM(txt,output,dic):
             while start < len(line) :
                 end = start + max_len
                 while end - start > 1 and line[start:end] not in words:
-                    end -= 1
+                    end -= 1                #从后往前一次减小词长
                 out.write("%s\n" % line[start:end])
                 start = end 
                 
 
 
 def RMM(txt,output,dic):
-    with open(txt,'r') as txt,open(output,'w') as out,open(dic,'r') as diction:
+    with open(txt,'r',encoding='utf-8') as txt,open(output,'w',encoding='utf-8') as out,open(dic,'r',encoding='utf-8') as diction:
         words = set()
         max_len = 0
         for line in diction:
@@ -59,7 +61,7 @@ def RMM(txt,output,dic):
                 if start < 0:
                     start = 0
                 while end - start > 1 and line[start:end] not in words:
-                    start += 1
+                    start += 1          #从前往后一次减小词长
                 word.insert(0,line[start:end])
                 end = start 
             for mword in word:
@@ -67,7 +69,7 @@ def RMM(txt,output,dic):
             
 
 def evaluate(data,output):
-    with open(data,'r') as data,open(output,'r') as out:
+    with open(data,'r',encoding='utf-8') as data,open(output,'r',encoding='utf-8') as out:
         All_prec = [line.split()[1] for line in data if len(line) > 1]
         All_reg = [line.strip() for line in out]
         countAll_prec = len(All_prec)
@@ -88,9 +90,9 @@ def evaluate(data,output):
                         tmp_i += All_prec[i]
             i += 1
             j += 1
-    precision = countPrec / countAll_reg
-    recall = countPrec / countAll_prec 
-    F = precision * recall * 2 / (precision + recall)
+    precision = countPrec / countAll_reg        #正确率
+    recall = countPrec / countAll_prec          #召回率
+    F = precision * recall * 2 / (precision + recall)       #F值
     print("正确识别词数：%d\n识别出的词总数：%d\n测试集中词总数：%d\n正确率：%f\n召回率：%f\nF值：%f\n" % (countPrec,countAll_reg,countAll_prec,precision,recall,F))
  
 
