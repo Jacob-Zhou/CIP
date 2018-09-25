@@ -2,10 +2,7 @@ import numpy as np
 import datetime
 from config import config
 
-train_data_file = config['train_data_file']
-dev_data_file = config['dev_data_file']
-test_data_file = config['test_data_file']
-alpha = config['alpha']
+
 
 
 def data_handle(data):  
@@ -45,7 +42,7 @@ class HMM(object):
         self.transport_matrix = np.zeros((self.N-1,self.N-1))       #最后一行表示从开始词性转移到各词性,最后一列表示转移到结束词性
         self.launch_matrix = np.zeros((self.N-2,self.M))            #最后一列表示发射到未知词
 
-    def launch(self,alpha):
+    def launch(self,alpha):         #计算发射矩阵
         for sentence in self.sentences:
             for word,tag in sentence:
                 self.launch_matrix[self.tags.get(tag)][self.words.get(word)] += 1
@@ -54,7 +51,7 @@ class HMM(object):
             for j in range(len(self.launch_matrix[i])):
                 self.launch_matrix[i][j] = (self.launch_matrix[i][j] + alpha) / (sum_line + alpha * self.M)
 
-    def transport(self,alpha):
+    def transport(self,alpha):      #计算转移矩阵
         for sentence in self.sentences:
             pre = -1
             for word,tag in sentence:
@@ -78,7 +75,6 @@ class HMM(object):
 
         path[0] = -1
         max_p[0] = transport_matrix[-1,:-1] + launch_matrix[:,word_index[0]]
-
 
         for i in range(1, observeNum):
             probs = transport_matrix[:-1,:-1] + max_p[i-1].reshape(-1,1) + launch_matrix[:,word_index[i]]       #!这一步是关键
@@ -119,6 +115,12 @@ class HMM(object):
 
 if __name__ == "__main__":
     startTime = datetime.datetime.now()
+
+    train_data_file = config['train_data_file']
+    dev_data_file = config['dev_data_file']
+    test_data_file = config['test_data_file']
+    alpha = config['alpha']
+
     print("train HMM...")
     print("alpha=%f" % config['alpha'])
     sentences = data_handle(train_data_file)

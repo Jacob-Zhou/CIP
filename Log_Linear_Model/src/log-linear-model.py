@@ -4,26 +4,18 @@ import random
 import math
 from scipy.misc import logsumexp
 from collections import defaultdict
+import pickle
+import os
 from config import config 
 
-train_data_file = config['train_data_file']
-dev_data_file = config['dev_data_file']
-test_data_file = config['test_data_file']
-iterator = config['iterator']
-stop_iterator = config['stop_iterator']
-batch_size = config['batch_size']
-regularization = config['regularization']
-step_opt = config['step_opt']
-C = config['C']
-eta = config['eta']
-decay_steps = config['decay_steps']
+
 
 def data_handle(filename):
-    sentences = list()
-    sentence = list()
+    sentences = []
+    sentence = []
     sentence_num = 0
     word_num = 0
-    with open(filename,"r") as dataTxt:
+    with open(filename,"r",encoding='utf-8') as dataTxt:
         for line in dataTxt:
             if len(line) == 1:
                 sentences.append(sentence)
@@ -39,14 +31,15 @@ def data_handle(filename):
 
 
 class log_linear_model(object):
-    def __init__(self):
+    def __init__(self, train_data_file, dev_data_file):
         self.train_data = data_handle(train_data_file)
         self.dev_data = data_handle(dev_data_file)
-        self.test_data = data_handle(test_data_file)
         tags = set()
+        self.num = 0                #总的实例数（词级别）
         for sentence in self.train_data:
             for word,tag in sentence:
                 tags.add(tag)
+                self.num += 1
         self.tags = list(tags)      #tag的列表
         self.N = len(self.tags)     #tag的数目
     
@@ -79,22 +72,24 @@ class log_linear_model(object):
     def create_feature_space(self):
         feature_space = set()
         for sentence in self.train_data:
-            tags = [tag for word,tag in sentence]
+            tags = [tag for word, tag in sentence]
             for i in range(len(sentence)):
-                feature_space |= self.create_feature_template(sentence,tags[i],i)
+                feature_space |= self.create_feature_template(sentence, tags[i], i)
         self.feature_space_list = list(feature_space)
-        self.feature_space = {feature:index for index,feature in enumerate(self.feature_space_list)}    #特征空间是一个字典，格式：{“NR*戴相龙:0”,"",....}
+        self.feature_space = {feature:index for index, feature in enumerate(self.feature_space_list)}
+        #特征空间是一个字典，格式：{“01:NR*戴相龙":0 , " " : 1 ,....}
         self.E = len(self.feature_space)    #特征空间的数目
 
 
-    def SGD_training(self):
+    def SGD_training(self, iterator, stop_iterator, batch_size, regularization, step_opt, C, eta, save_file):
         self.w = np.zeros(self.E)               #权重向量
         g = defaultdict(float)                   #梯度
-#        g = np.zeros(self.E)                    #梯度向量
+        # g = np.zeros(self.E)                    #梯度向量
         global_step = 0                         #计数器，记录更新次数
         b = 0                                   #计数器，记录batch-size 
         decay_rate = 0.96
-        learn_rate = eta 
+        learn_rate = eta
+        decay_steps = self.num / batch_size
         max_dev_data_precision = 0
         max_dev_data_precision_index = 0
         for iter in range(iterator):
@@ -119,15 +114,12 @@ class log_linear_model(object):
                     right_tag = sentence[i][1]
                     right_tag_features = self.create_feature_template(sentence,right_tag,i)
                     for feature in right_tag_features:
-                        g[self.feature_space.get(feature)] += 1;
+                        g[self.feature_space.get(feature)] += 1
                     features_list = [self.create_feature_template(sentence , tag , i) for tag in self.tags]
                     scores = np.zeros(self.N)
-                    tag_i = 0
-                    for features in features_list :
-                        for feature in features:
-                            if feature in self.feature_space:
-                                scores[tag_i] += self.w[self.feature_space.get(feature)]
-                        tag_i += 1
+                    tag_index = [i for i in range(len(self.tags))]
+                    for tag_i, features in zip(tag_index, features_list) :
+                        scores[tag_i] = self.get_score(features)
                     scores_all = logsumexp(scores)
                     log_prob = scores - scores_all
                     for features , log_p in zip(features_list , log_prob):
@@ -142,7 +134,7 @@ class log_linear_model(object):
 
                         for id , value in g.items():
                             self.w[id] += learn_rate * value
-#                        self.w += learn_rate * g
+                        # self.w += learn_rate * g
 
                         if step_opt:
                             learn_rate = eta * decay_rate ** (global_step / decay_steps)
@@ -150,7 +142,20 @@ class log_linear_model(object):
                         b = 0
                         global_step += 1
                         g = defaultdict(float)
-#                        g = np.zeros(self.E)
+                        # g = np.zeros(self.E)
+
+            if b > 0:
+                if regularization:
+                    self.w *= (1 - C * learn_rate)
+                for id, value in g.items():
+                    self.w[id] += learn_rate * value
+                # self.w += learn_rate * g
+                if step_opt:
+                    learn_rate = eta * decay_rate ** (global_step / decay_steps)
+                b = 0
+                global_step += 1
+                g = defaultdict(float)
+                # g = np.zeros(self.E)
             
             print("训练集：",end="")
             train_data_precision = self.evaluate(self.train_data)
@@ -160,8 +165,7 @@ class log_linear_model(object):
                 now_train_data_precision = train_data_precision 
                 max_dev_data_precision = dev_data_precision
                 max_dev_data_precision_index = iter + 1
-                print("测试集：",end="")
-                test_data_precision = self.evaluate(self.test_data)
+                self.save(save_file)
             stoptime = datetime.datetime.now()
             time = stoptime - startime 
             print("本轮用时：%s" % str(time))
@@ -171,39 +175,70 @@ class log_linear_model(object):
         print("开发集第%d轮准确率最高:" % max_dev_data_precision_index)
         print("此时训练集准确率:%f" % now_train_data_precision)
         print("此时开发集准确率:%f" % max_dev_data_precision)
-        print("此时测试集准确率为:%f" % test_data_precision)
 
+    def get_score(self,features):        #获取某一部分特征的分数
+        score = 0
+        for feature in features:
+            if feature in self.feature_space:
+                score += self.w[self.feature_space[feature]]
+        return score
+
+    def predict(self, sentence, index):      #预测某个sentence第index位置的最高分数的tag
+        scores = [self.get_score(self.create_feature_template(sentence, tag, index)) for tag in self.tags]
+        return self.tags[np.argmax(scores)]
 
     def evaluate(self,sentences):
         count_right = 0
         count_all = 0
-        score_matrix = np.zeros(self.N)
         for sentence in sentences:
             for i in range(len(sentence)):
                 count_all += 1
                 right_tag = sentence[i][1]
-                for tag_num in range(len(self.tags)):
-                    features = self.create_feature_template(sentence,self.tags[tag_num],i)
-                    score = 0
-                    for feature in features :
-                        if feature in self.feature_space:
-                            score += self.w[self.feature_space.get(feature)]
-                    score_matrix[tag_num] = score 
-                max_tag = self.tags[np.argmax(score_matrix)]
+                max_tag = self.predict(sentence, i)
                 if right_tag == max_tag:
                     count_right += 1
         precision = count_right/count_all
         print("正确词数：%d\t总词数：%d\t正确率%f" % (count_right,count_all,precision))
         return precision 
 
+    def save(self,save_file):
+        with open(save_file,"wb") as f:
+            pickle.dump(self, f)
+
+    @staticmethod
+    def load(save_file):
+        with open(save_file,"rb") as f:
+            return pickle.load(f)
 
 
 if __name__ == "__main__":
+    train_data_file = config['train_data_file']
+    dev_data_file = config['dev_data_file']
+    test_data_file = config['test_data_file']
+    iterator = config['iterator']
+    stop_iterator = config['stop_iterator']
+    batch_size = config['batch_size']
+    regularization = config['regularization']
+    step_opt = config['step_opt']
+    C = config['C']
+    eta = config['eta']
+    save_file = config['save_file']
+    thread_num = config['thread_num']
+
+    os.environ['MKL_NUM_THREADS'] = thread_num
+
     startime = datetime.datetime.now()
-    lm = log_linear_model()
+    lm = log_linear_model(train_data_file,dev_data_file)
     lm.create_feature_space()
-    lm.SGD_training()
+    lm.SGD_training(iterator, stop_iterator, batch_size, regularization, step_opt, C, eta, save_file)
     stoptime = datetime.datetime.now()
     time = stoptime - startime
     print("耗时：" +  str(time))
+
+    print('\n加载模型跑测试集：')
+    test_data = data_handle(test_data_file)
+    test_model = log_linear_model.load(save_file)
+    test_model.evaluate(test_data)
+
+
 

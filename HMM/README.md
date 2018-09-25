@@ -8,8 +8,8 @@
         dev.conll: 开发集
         test.conll: 测试集
     ./result/
-    	res_small_data: 小数据测试结果
-    	res_big_data: 大数据测试结果
+    	res_small_data.txt: 小数据测试结果
+    	res_big_data.txt: 大数据测试结果
     ./src/
         config.py: 配置文件
         HMM.py: 隐马尔可夫模型代码

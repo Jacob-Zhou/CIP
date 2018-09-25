@@ -1,4 +1,4 @@
-# Log linear model
+# Log Linear Model(对数线性模型)
 ## 一、目录文件
     ./data/:
         train.conll: 训练集
@@ -8,27 +8,22 @@
         dev.conll: 开发集
         test.conll: 测试集
     ./result:
-        res_v1_1_smalldata: 初始版本，小数据测试
-        res_v1_2_smalldata: 初始版本，使用正则化,小数据测试
-        res_v1_3_smalldata: 初始版本，使用模拟退火,小数据测试
-        res_v1_4_smalldata: 初始版本，使用正则化和模拟退火,小数据测试
-        res_v2_1_smalldata: 特征优化版本，小数据测试
-        res_v2_2_smalldata: 特征优化版本，使用正则化,小数据测试
-        res_v2_3_smalldata: 特征优化版本，使用模拟退火,小数据测试
-        res_v2_4_smalldata: 特征优化版本，使用正则化和模拟退火,小数据测试
-        res_v1_1_bigdata: 初始版本，大数据测试
-        res_v1_2_bigdata: 初始版本，使用正则化,大数据测试
-        res_v1_3_bigdata: 初始版本，使用模拟退火,大数据测试
-        res_v1_4_bigdata: 初始版本，使用正则化和模拟退火,大数据测试
-        res_v2_1_bigdata: 特征优化版本，大数据测试
-        res_v2_2_bigdata: 特征优化版本，使用正则化,大数据测试
-        res_v2_3_bigdata: 特征优化版本，使用模拟退火,大数据测试
-        res_v2_4_bigdata: 特征优化版本，使用正则化和模拟退火,大数据测试
+        res_nopt_smalldata_1.txt: 初始版本，小数据测试
+        res_opt_smalldata_1.txt: 初始版本，使用步长优化,小数据测试
+        res_nopt_smalldata_2.txt: 特征优化版本，小数据测试
+        res_opt_smalldata_2.txt: 特征优化版本，使用步长优化,小数据测试
+        res_nopt_bigdata_1.txt: 初始版本，大数据测试
+        res_opt_bigdata_1.txt: 初始版本，使用步长优化,大数据测试
+        res_nopt_bigdata_2.txt: 特征优化版本，大数据测试
+        res_opt_bigdata_2.txt: 特征优化版本，使用步长优化,大数据测试
+        log_linear_model_nopt_b_2.data: 特征优化版本，大数据测试保存模型
+        log_linear_model_opt_b_2.data: 特征优化版本，使用步长优化,大数据测试保存模型
     ./src:
         log_linear_model.py: 初始版本的代码
         log_linear_model_v2.py: 使用特征提取优化后的代码
         config.py: 配置文件，用字典存储每个参数
     ./README.md: 使用说明
+    注：保存的模型过大，未上传github
 
 ## 二、运行
 ### 1.运行环境
@@ -36,22 +31,23 @@
 ### 2.运行方法
     #配置文件中各个参数
     config = {
-        'train_data_file': '../data/train.conll', #训练集文件,大数据改为'../big_data/train.conll'
-        'dev_data_file': '../data/dev.conll',     #开发集文件,大数据改为'../big_data/dev.conll'
-        'test_data_file': '../data/dev.conll',    #测试集文件,大数据改为'../big_data/test.conll'
-        'iterator': 100,                          #最大迭代次数
-        'stop_iterator': 10,                      #迭代stop_iterator次性能没有提升则结束
-        'batch_size': 50,                         #batch_size
-        'regularization': False,                  #是否正则化
-        'step_opt': False,                        #是否步长优化（模拟退火）
-        'C': 0.01,                                #正则化系数
-        'eta': 1.0,                               #初始步长
-        'decay_steps': 5000                      #衰减速度,数据量越大，值越大,小数据5000,大数据50000
+        'train_data_file': '../big_data/train.conll',   #训练集文件
+        'dev_data_file': '../big_data/dev.conll',       #开发集文件
+        'test_data_file': '../big_data/test.conll',     #测试集文件
+        'iterator': 100,                                #最大迭代次数
+        'stop_iterator': 10,                            #迭代stop_iterator次性能没有提升则结束
+        'batch_size': 50,                               #batch_size
+        'regularization': False,                        #是否正则化
+        'step_opt': False,                              #是否步长优化（模拟退火）
+        'C': 0.0001,                                    #正则化系数
+        'eta': 0.5,                                     #初始步长
+        'save_file': '../result/log_linear_model.data', #保存模型数据文件
+        'thread_num': '2'                               #设置最大线程数
     }
     
     $ cd ./src
-    $ python3 log_linear-model.py                   #执行初始版本
-    $ python3 log_linear-model_v2.py                #执行特征提取优化版本
+    $ python log_linear-model.py                        #执行初始版本
+    $ python log_linear-model_v2.py                     #执行特征提取优化版本
 ### 3.参考结果
 #### (1)小数据测试
 
@@ -60,16 +56,14 @@
 开发集：data/dev.conll
 ```
 
-| 部分特征优化 |            步长优化            |   正则化    |  迭代次数  | train准确率 | dev准确率 | 时间/迭代  |
-| :----: | :------------------------: | :------: | :----: | :------: | :----: | :----: |
-|   ×    |             ×              |    ×     | 99/100 | 100.00%  | 87.21% | 1.5min |
-|   ×    |             ×              | C=0.0001 | 31/42  |  99.99%  | 87.43% | 1.5min |
-|   ×    | eta=0.5,  decay_steps=5000 |    ×     | 23/34  | 100.00%  | 87.42% | 1.5min |
-|   ×    | eta=0.5,  decay_steps=5000 | C=0.0001 | 27/38  | 100.00%  | 87.52% | 1.5min |
-|   √    |             ×              |    ×     | 49/60  | 100.00%  | 87.44% |   8s   |
-|   √    |             ×              | C=0.0001 | 12/23  | 100.00%  | 87.55% |  12s   |
-|   √    | eta=0.5,  decay_steps=5000 |    ×     |  8/19  | 100.00%  | 87.58% |  13s   |
-|   √    | eta=0.5,  decay_steps=5000 | C=0.0001 | 25/36  | 100.00%  | 87.56% |   8s   |
+| partial-feature | 初始步长 | 步长优化 | 迭代次数 | train准确率 | dev准确率 | 时间/迭代 |
+| :-------------: | :------: | :------: | :------: | :---------: | :-------: | --------- |
+|        ×        |   0.5    |    ×     |  27/38   |   100.00%   |  87.39%   | 32s       |
+|        ×        |   0.5    |    √     |  26/37   |   100.00%   |  87.44%   | 29s       |
+|        √        |   0.5    |    ×     |  51/62   |   100.00%   |  87.57%   | 4s        |
+|        √        |   0.5    |    √     |  10/21   |   100.00%   |  87.56%   | 4s        |
+
+注：由于正则化效果不明显，故未给出正则化实验结果
 
 #### (2)大数据测试
 
@@ -79,14 +73,10 @@
 测试集：big-data/test.conll
 ```
 
-| 部分特征优化 |            步长优化             |    正则化     | 迭代次数  | train准确率 | dev准确率 | test准确率 | 时间/迭代 |
-| :----: | :-------------------------: | :--------: | :---: | :------: | :----: | :-----: | :---: |
-|   ×    |              ×              |     ×      | 22/33 |  98.73%  | 93.05% | 92.71%  | 25min |
-|   ×    |              ×              | C=0.000001 | 32/43 |  98.82%  | 93.01% | 92.68%  | 32min |
-|   ×    | eta=0.5,  decay_steps=50000 |     ×      | 37/48 |  99.33%  | 93.63% | 93.39%  | 32min |
-|   ×    | eta=0.5,  decay_steps=50000 | C=0.000001 | 36/47 |  99.30%  | 93.69% | 93.40%  | 33min |
-|   √    |              ×              |     ×      | 24/35 |  99.11%  | 93.25% | 93.00%  | 7min  |
-|   √    |              ×              | C=0.000001 | 14/25 |  98.83%  | 93.19% | 92.88%  | 30min |
-|   √    | eta=0.5,  decay_steps=50000 |     ×      | 53/64 |  99.35%  | 93.72% | 93.49%  | 5min  |
-|   √    | eta=0.5,  decay_steps=50000 | C=0.000001 | 22/33 |  99.27%  | 93.69% | 93.43%  | 21min |
+| partial-feature | 初始步长 | 步长优化 | 迭代次数 | train准确率 | dev准确率 | test准确率 | 时间/迭代 |
+| :-------------: | :------: | :-------: | :---------: | :--------: | :--------: | :--------: | --------------- |
+|        ×        | 0.5  |   ×   | 21/32 |   99.12%   |   93.54%   | 93.28% | 17min |
+|        ×        | 0.5 | √ | 20/31 | 99.30% | 93.77% | 93.37% | 17min |
+|        √        | 0.5  |   ×   | 23/34 |   99.24%   |   93.55%   |   93.37%   | 2.5min |
+|        √        | 0.5 |   √   | 24/35 |   99.35%   | 93.75% |   93.57%   | 2.5min |
 

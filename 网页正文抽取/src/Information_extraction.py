@@ -25,6 +25,9 @@ def get_content(infile_name, outfile_name, decode):
     for href in hrefs:
         outfile.write(href.text + '\t' + href.get('href') + '\n')
 
+    infile.close()
+    outfile.close()
+
 def get_body(elemtree):
     global body_content
     if elemtree.tag != 'script':

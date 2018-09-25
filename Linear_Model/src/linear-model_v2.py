@@ -1,22 +1,16 @@
 import numpy as np
 import datetime
 import random
-import sys
 from config import config
-
-train_data_file = config['train_data_file']
-dev_data_file = config['dev_data_file']
-test_data_file = config['test_data_file']
-averaged = config['averaged']
-iterator = config['iterator']
-stop_iterator = config['stop_iterator']
+import pickle
+import os
 
 def data_handle(filename):
-    sentences = list()
-    sentence = list()
+    sentences = []
+    sentence = []
     sentence_num = 0
     word_num = 0
-    with open(filename,"r") as dataTxt:
+    with open(filename,"r", encoding='utf-8') as dataTxt:
         for line in dataTxt:
             if len(line) == 1:
                 sentences.append(sentence)
@@ -32,10 +26,9 @@ def data_handle(filename):
 
 
 class linear_model(object):
-    def __init__(self):
+    def __init__(self, train_data_file, dev_data_file):
         self.train_data = data_handle(train_data_file)
         self.dev_data = data_handle(dev_data_file)
-        self.test_data = data_handle(test_data_file)
         tags = set()
         for sentence in self.train_data:
             for word,tag in sentence:
@@ -76,20 +69,34 @@ class linear_model(object):
             for i in range(len(sentence)):
                 feature_space |= self.create_feature_template(sentence,i)
         self.feature_space_list = list(feature_space)
-        self.feature_space = {feature:index for index,feature in enumerate(self.feature_space_list)}    #特征空间是一个字典，格式：{“NR*戴相龙:0”,"",....}
+        self.feature_space = {feature:index for index,feature in enumerate(self.feature_space_list)}
+        #特征空间是一个字典，格式：{"NR*戴相龙":0 , "":1 , ....}
         self.E = len(self.feature_space)    #特征空间的数目
 
+    def get_score(self, features, averaged=False):      #获取某一部分特征的分数矩阵
+        if averaged:
+            scores = np.array(
+                [self.v[self.feature_space[feature]] for feature in features if feature in self.feature_space])
+        else:
+            scores = np.array(
+                [self.w[self.feature_space[feature]] for feature in features if feature in self.feature_space])
+        return np.sum(scores, axis=0)
 
-    def online_training(self):
-        self.w = np.zeros((self.N,self.E),dtype=int)         
-        self.v = np.zeros((self.N,self.E),dtype=int) 
-        self.update_times = np.zeros((self.N,self.E),dtype=int)
-        score_matrix = np.zeros(self.N,dtype=int)
-        if averaged == "TRUE":
+
+    def predict(self, sentence, position, averaged=False):    #预测某个sentence第position位置的最高分数的tag
+        scores = self.get_score(self.create_feature_template(sentence,position), averaged)
+        tag_id = np.argmax(scores)
+        return self.tags[tag_id]
+
+    def online_training(self, iterator, stop_iterator, save_file, averaged=False):
+        self.w = np.zeros((self.E,self.N),dtype=int)
+        self.v = np.zeros((self.E,self.N),dtype=int)
+        self.update_times = np.zeros((self.E,self.N),dtype=int)
+        if averaged :
             print("使用累加特征权重：")
         else:
             print("不使用累加特征权重：")
-        update_times = 0
+        update_time = 0
         max_dev_data_precision = 0
         max_dev_data_precision_index = 0
         for iter in range(iterator):
@@ -101,94 +108,105 @@ class linear_model(object):
             for sentence in self.train_data:
                 for i in range(len(sentence)):
                     right_tag = sentence[i][1]
-                    features = self.create_feature_template(sentence,i)
-                    for tag in self.tags:
-                        score = 0
-                        tag_index = self.tags_dic[tag]
-                        for feature in features :
-                            score += self.w[tag_index][self.feature_space[feature]]
-                        score_matrix[tag_index] = score 
-                    max_tag = self.tags[np.argmax(score_matrix)]
+                    max_tag = self.predict(sentence, i, False)
                     if right_tag != max_tag:
-                        update_times += 1
+                        update_time += 1
                         right_tag_index = self.tags_dic[right_tag]
                         max_tag_index = self.tags_dic[max_tag]
+                        features = self.create_feature_template(sentence, i)
                         for feature in features:
                             feature_index = self.feature_space[feature]
-                            last_w = self.w[right_tag_index][feature_index]
-                            last_update_times = self.update_times[right_tag_index][feature_index] 
-                            cur_update_times = update_times 
-                            self.update_times[right_tag_index][feature_index] = update_times 
-                            self.w[right_tag_index][feature_index] += 1
-                            self.v[right_tag_index][feature_index] += self.w[right_tag_index][feature_index] + (cur_update_times - last_update_times - 1) * last_w 
+                            last_w = self.w[feature_index][right_tag_index]
+                            self.w[feature_index][right_tag_index] += 1
+                            self.update_v(feature_index, right_tag_index, last_w, update_time)
 
-                            last_w = self.w[max_tag_index][feature_index]
-                            last_update_times = self.update_times[max_tag_index][feature_index] 
-                            self.update_times[max_tag_index][feature_index] = update_times 
-                            self.w[max_tag_index][feature_index] -= 1
-                            self.v[max_tag_index][feature_index] += self.w[max_tag_index][feature_index] + (cur_update_times - last_update_times - 1) * last_w 
-            #本轮迭代结束
-            for row in range(self.N):
-                for col in range(self.E):
+                            last_w = self.w[feature_index][max_tag_index]
+                            self.w[feature_index][max_tag_index] -= 1
+                            self.update_v(feature_index, max_tag_index, last_w, update_time)
+                            #本轮迭代结束
+
+            for row in range(self.E):
+                for col in range(self.N):
                     last_w = self.w[row][col]
-                    last_update_times = self.update_times[row][col]
-                    if update_times != last_update_times: 
-                        self.update_times[row][col] = update_times
-                        self.v[row][col] +=  self.w[row][col] + (update_times - last_update_times - 1) * last_w 
+                    last_update_time = self.update_times[row][col]
+                    if update_time != last_update_time:
+                        self.update_times[row][col] = update_time
+                        self.v[row][col] += (update_time - last_update_time) * last_w
 
             print("训练集：",end="")
-            self.evaluate(self.train_data)
+            train_data_precision = self.evaluate(self.train_data,averaged)
             print("开发集：",end="")
-            dev_data_precision = self.evaluate(self.dev_data)
+            dev_data_precision = self.evaluate(self.dev_data,averaged)
             if dev_data_precision > max_dev_data_precision:
+                now_train_data_precision = train_data_precision
                 max_dev_data_precision = dev_data_precision
                 max_dev_data_precision_index = iter + 1
-                test_data_precision = self.evaluate(self.test_data,"FALSE")
+                self.save(save_file)
             stoptime = datetime.datetime.now()
             time = stoptime - startime 
             print("本轮用时：%s" % str(time))
             if ((iter+1)-max_dev_data_precision_index) > stop_iterator:     #stop_iterator轮性能没有提升
                 break
         print("\n共迭代%d轮" % (iter+1))
-        print("开发集第%d轮准确率最高，为：%f" % (max_dev_data_precision_index , max_dev_data_precision))
-        print("此时测试集准确率为：%f" % test_data_precision)
+        print("开发集第%d轮准确率最高:" % max_dev_data_precision_index)
+        print("此时训练集准确率:%f" % now_train_data_precision)
+        print("此时开发集准确率:%f" % max_dev_data_precision)
 
 
-    def evaluate(self,sentences,out = 'TRUE'):
+    def update_v(self, feature_index, tag_index, last_w, update_time):
+        last_update_time = self.update_times[feature_index][tag_index]
+        self.update_times[feature_index][tag_index] = update_time
+        self.v[feature_index][tag_index]+= self.w[feature_index][tag_index] + \
+                                            (update_time - last_update_time - 1) * last_w
+
+
+    def evaluate(self,sentences,averaged=False):
         count_right = 0
         count_all = 0
-        score_matrix = np.zeros(self.N,dtype=int)
         for sentence in sentences:
             for i in range(len(sentence)):
                 count_all += 1
                 right_tag = sentence[i][1]
-                features = self.create_feature_template(sentence,i)
-                for tag in self.tags:
-                    tag_index = self.tags_dic[tag]
-                    score = 0
-                    for feature in features :
-                        if feature in self.feature_space:
-                            if averaged == "TRUE":
-                                score += self.v[tag_index][self.feature_space[feature]]
-                            else:
-                                score += self.w[tag_index][self.feature_space[feature]]
-                    score_matrix[tag_index] = score 
-                max_tag = self.tags[np.argmax(score_matrix)]
+                max_tag = self.predict(sentence, i, averaged)
                 if right_tag == max_tag:
                     count_right += 1
         precision = count_right/count_all
-        if out == "TRUE":
-            print("正确词数：%d\t总词数：%d\t正确率%f" % (count_right,count_all,precision))
+        print("正确词数：%d\t总词数：%d\t正确率%f" % (count_right,count_all,precision))
         return precision 
 
+    def save(self,save_file):
+        with open(save_file,"wb") as f:
+            pickle.dump(self,f)
+
+    @staticmethod
+    def load(save_file):
+        with open(save_file,"rb") as f:
+            return pickle.load(f)
 
 
 if __name__ == "__main__":
     startime = datetime.datetime.now()
-    lm = linear_model()
+
+    train_data_file = config['train_data_file']
+    dev_data_file = config['dev_data_file']
+    test_data_file = config['test_data_file']
+    averaged = config['averaged']
+    iterator = config['iterator']
+    stop_iterator = config['stop_iterator']
+    save_file = config['save_file']
+    thread_num = config['thread_num']
+
+    os.environ['MKL_NUM_THREADS'] = thread_num
+
+    lm = linear_model(train_data_file, dev_data_file)
     lm.create_feature_space()
-    lm.online_training()
+    lm.online_training(iterator, stop_iterator, save_file, averaged)
+
     stoptime = datetime.datetime.now()
     time = stoptime - startime
     print("耗时：" +  str(time))
+    print('\n加载模型跑测试集：')
+    test_data = data_handle(test_data_file)
+    test_model = linear_model.load(save_file)
+    test_model.evaluate(test_data, averaged)
 
